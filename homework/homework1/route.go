@@ -138,8 +138,6 @@ func (n *node) childOrCreate(path string) *node {
 
 type routerMatchStrategy func(path string, n *node) *node
 
-type strategyBuilder func(path string) routerMatchStrategy
-
 func buildStrategy(path string) routerMatchStrategy {
 	if path == "*" {
 		return wildcardRouterStrategy
