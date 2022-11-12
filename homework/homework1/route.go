@@ -30,7 +30,7 @@ func (r *router) addRoute(method string, path string, handler HandleFunc) {
 	root, ok := r.trees[method]
 	log.Println("current path is ", path)
 	if !ok {
-		root = NewRootNode()
+		root = NewRootNode(nil)
 		r.trees[method] = root
 	}
 	// 1. 检查 path 是否合法
@@ -40,21 +40,48 @@ func (r *router) addRoute(method string, path string, handler HandleFunc) {
 	// 2. 按照 / 分割 path
 	paths := strings.Split(path, "/")
 	// 3. 从 root 开始，逐级查找或者创建节点
-	var curNode = root
 	for _, p := range paths {
 		if p == "" {
 			continue
 		}
-		curNode = curNode.childOrCreate(p)
+		root = root.childOrCreate(p)
 	}
-	curNode.handler = handler
+	root.handler = handler
 
 }
 
 // findRoute 查找对应的节点
 // 注意，返回的 node 内部 HandleFunc 不为 nil 才算是注册了路由
 func (r *router) findRoute(method string, path string) (*matchInfo, bool) {
-	panic("implement me")
+	root, ok := r.trees[method]
+	if !ok {
+		return nil, false
+	}
+
+	path = strings.Trim(path, "/")
+
+	if path == "" {
+		return &matchInfo{
+			root,
+			nil,
+		}, true
+	}
+
+	paths := strings.Split(path, "/")
+
+	log.Printf("current path is %s\n", path)
+
+	for _, p := range paths {
+		child, ok := root.childOf(p)
+		if !ok {
+			return nil, false
+		}
+		root = child
+	}
+
+	return &matchInfo{
+		root,
+		nil}, true
 }
 
 type nodeType int
@@ -99,9 +126,10 @@ type node struct {
 	regExpr  *regexp.Regexp
 }
 
-func NewRootNode() *node {
+func NewRootNode(handle HandleFunc) *node {
 	return &node{
-		path: "/",
+		path:    "/",
+		handler: handle,
 	}
 }
 
@@ -133,6 +161,16 @@ func (n *node) childOrCreate(path string) *node {
 		return res
 	}
 	var strategy = buildStrategy(path)
+
+	if strategy == nil {
+		if n.children == nil {
+			n.children = make(map[string]*node)
+		}
+		res = NewStaticNode()
+		n.children[path] = res
+		return res
+	}
+
 	return strategy(path, n)
 }
 
@@ -151,7 +189,7 @@ func buildStrategy(path string) routerMatchStrategy {
 		return regRouterStrategy
 	}
 
-	return staticRouterStrategy
+	return nil
 }
 
 func paramRouterStrategy(path string, n *node) *node {
@@ -200,6 +238,13 @@ func staticRouterStrategy(path string, n *node) *node {
 type matchInfo struct {
 	n          *node
 	pathParams map[string]string
+}
+
+func newMatchInfo(n *node, pathParams map[string]string) *matchInfo {
+	return &matchInfo{
+		n,
+		pathParams,
+	}
 }
 
 func (m *matchInfo) addValue(key string, value string) {
