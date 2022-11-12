@@ -132,47 +132,69 @@ func (n *node) childOrCreate(path string) *node {
 	if ok {
 		return res
 	}
-	// 1. 通配符
+	var strategy = buildStrategy(path)
+	return strategy(path, n)
+}
+
+type routerMatchStrategy func(path string, n *node) *node
+
+type strategyBuilder func(path string) routerMatchStrategy
+
+func buildStrategy(path string) routerMatchStrategy {
 	if path == "*" {
-		if n.starChild == nil {
-			n.starChild = &node{
-				typ:  nodeTypeAny,
-				path: path,
-			}
-		}
-		return n.starChild
+		return wildcardRouterStrategy
 	}
-	// 2. 参数路由
+
 	if path[0] == ':' {
-		if n.paramChild == nil {
-			n.paramChild = &node{
-				typ:       nodeTypeParam,
-				path:      path,
-				paramName: path[1:],
-			}
-		}
-		return n.paramChild
+		return paramRouterStrategy
 	}
-	// 3. 正则路由
+
 	if path[0] == '(' && path[len(path)-1] == ')' {
-		if n.regChild == nil {
-			regExpr, err := regexp.Compile(path[1 : len(path)-1])
-			if err != nil {
-				panic(err)
-			}
-			n.regChild = &node{
-				typ:       nodeTypeReg,
-				path:      path,
-				regExpr:   regExpr,
-				paramName: path[1:],
-			}
+		return regRouterStrategy
+	}
+
+	return staticRouterStrategy
+}
+
+func paramRouterStrategy(path string, n *node) *node {
+	if n.paramChild == nil {
+		n.paramChild = &node{
+			typ:       nodeTypeParam,
+			path:      path,
+			paramName: path[1:],
 		}
-		return n.regChild
 	}
-	// 4. 静态路由
-	if n.children == nil {
-		n.children = make(map[string]*node)
+	return n.paramChild
+}
+
+func regRouterStrategy(path string, n *node) *node {
+	if n.regChild == nil {
+		regExpr, err := regexp.Compile(path[1 : len(path)-1])
+		if err != nil {
+			panic(err)
+		}
+		n.regChild = &node{
+			typ:       nodeTypeReg,
+			path:      path,
+			regExpr:   regExpr,
+			paramName: path[1:],
+		}
 	}
+	return n.regChild
+}
+
+func wildcardRouterStrategy(path string, n *node) *node {
+	if n.starChild == nil {
+		n.starChild = &node{
+			typ:  nodeTypeAny,
+			path: path,
+		}
+	}
+	return n.starChild
+}
+
+func staticRouterStrategy(path string, n *node) *node {
+	n.children = make(map[string]*node)
 	n.children[path] = NewStaticNode()
 	return n.children[path]
 }
