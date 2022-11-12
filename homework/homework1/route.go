@@ -2,7 +2,6 @@ package web
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 )
@@ -27,27 +26,44 @@ func newRouter() router {
 // - 不能在同一个位置同时注册通配符路由和参数路由，例如 /user/:id 和 /user/* 冲突
 // - 同名路径参数，在路由匹配的时候，值会被覆盖。例如 /user/:id/abc/:id，那么 /user/123/abc/456 最终 id = 456
 func (r *router) addRoute(method string, path string, handler HandleFunc) {
+	if path == "" {
+		panic("web: 路由是空字符串")
+	}
+	if path[0] != '/' {
+		panic("web: 路由必须以 / 开头")
+	}
+
+	if path != "/" && path[len(path)-1] == '/' {
+		panic("web: 路由不能以 / 结尾")
+	}
+
 	root, ok := r.trees[method]
-	log.Println("current path is ", path)
+	// 这是一个全新的 HTTP 方法，创建根节点
 	if !ok {
-		root = NewRootNode(nil)
+		// 创建根节点
+		root = &node{path: "/"}
 		r.trees[method] = root
 	}
-	// 1. 检查 path 是否合法
-	if err := checkPath(path, checkPathEmpty, startWithSlash, endWithSlash, noDuplicateSlash); err != nil {
-		panic(err.Error())
-	}
-	// 2. 按照 / 分割 path
-	paths := strings.Split(path, "/")
-	// 3. 从 root 开始，逐级查找或者创建节点
-	for _, p := range paths {
-		if p == "" {
-			continue
+	if path == "/" {
+		if root.handler != nil {
+			panic("web: 路由冲突[/]")
 		}
-		root = root.childOrCreate(p)
+		root.handler = handler
+		return
+	}
+
+	segs := strings.Split(path[1:], "/")
+	// 开始一段段处理
+	for _, s := range segs {
+		if s == "" {
+			panic(fmt.Sprintf("web: 非法路由。不允许使用 //a/b, /a//b 之类的路由, [%s]", path))
+		}
+		root = root.childOrCreate(s)
+	}
+	if root.handler != nil {
+		panic(fmt.Sprintf("web: 路由冲突[%s]", path))
 	}
 	root.handler = handler
-
 }
 
 // findRoute 查找对应的节点
@@ -58,30 +74,29 @@ func (r *router) findRoute(method string, path string) (*matchInfo, bool) {
 		return nil, false
 	}
 
-	path = strings.Trim(path, "/")
-
-	if path == "" {
-		return &matchInfo{
-			root,
-			nil,
-		}, true
+	if path == "/" {
+		return &matchInfo{n: root}, true
 	}
 
-	paths := strings.Split(path, "/")
-
-	log.Printf("current path is %s\n", path)
-
-	for _, p := range paths {
-		child, ok := root.childOf(p)
+	segs := strings.Split(strings.Trim(path, "/"), "/")
+	mi := &matchInfo{}
+	for _, s := range segs {
+		var child *node
+		child, ok = root.childOf(s)
 		if !ok {
+			if root.typ == nodeTypeAny {
+				mi.n = root
+				return mi, true
+			}
 			return nil, false
+		}
+		if child.paramName != "" {
+			mi.addValue(child.paramName, s)
 		}
 		root = child
 	}
-
-	return &matchInfo{
-		root,
-		nil}, true
+	mi.n = root
+	return mi, true
 }
 
 type nodeType int
@@ -126,28 +141,31 @@ type node struct {
 	regExpr  *regexp.Regexp
 }
 
-func NewRootNode(handle HandleFunc) *node {
-	return &node{
-		path:    "/",
-		handler: handle,
-	}
-}
-
-func NewStaticNode() *node {
-	return &node{
-		typ: nodeTypeStatic,
-	}
-}
-
 // child 返回子节点
 // 第一个返回值 *node 是命中的节点
 // 第二个返回值 bool 代表是否命中
 func (n *node) childOf(path string) (*node, bool) {
 	if n.children == nil {
-		return nil, false
+		return n.childOfNonStatic(path)
 	}
-	child, ok := n.children[path]
-	return child, ok
+	res, ok := n.children[path]
+	if !ok {
+		return n.childOfNonStatic(path)
+	}
+	return res, ok
+}
+
+// childOfNonStatic 从非静态匹配的子节点里面查找
+func (n *node) childOfNonStatic(path string) (*node, bool) {
+	if n.regChild != nil {
+		if n.regChild.regExpr.Match([]byte(path)) {
+			return n.regChild, true
+		}
+	}
+	if n.paramChild != nil {
+		return n.paramChild, true
+	}
+	return n.starChild, n.starChild != nil
 }
 
 // childOrCreate 查找子节点，
@@ -156,95 +174,97 @@ func (n *node) childOf(path string) (*node, bool) {
 // 最后会从 children 里面查找，
 // 如果没有找到，那么会创建一个新的节点，并且保存在 node 里面
 func (n *node) childOrCreate(path string) *node {
-	res, ok := n.childOf(path)
-	if ok {
-		return res
-	}
-	var strategy = buildStrategy(path)
-
-	if strategy == nil {
-		if n.children == nil {
-			n.children = make(map[string]*node)
-		}
-		res = NewStaticNode()
-		n.children[path] = res
-		return res
-	}
-
-	return strategy(path, n)
-}
-
-type routerMatchStrategy func(path string, n *node) *node
-
-func buildStrategy(path string) routerMatchStrategy {
 	if path == "*" {
-		return wildcardRouterStrategy
+		if n.paramChild != nil {
+			panic(fmt.Sprintf("web: 非法路由，已有路径参数路由。不允许同时注册通配符路由和参数路由 [%s]", path))
+		}
+		if n.regChild != nil {
+			panic(fmt.Sprintf("web: 非法路由，已有正则路由。不允许同时注册通配符路由和正则路由 [%s]", path))
+		}
+		if n.starChild == nil {
+			n.starChild = &node{path: path, typ: nodeTypeAny}
+		}
+		return n.starChild
 	}
 
+	// 以 : 开头，需要进一步解析，判断是参数路由还是正则路由
 	if path[0] == ':' {
-		return paramRouterStrategy
+		paramName, expr, isReg := n.parseParam(path)
+		if isReg {
+			return n.childOrCreateReg(path, expr, paramName)
+		}
+		return n.childOrCreateParam(path, paramName)
 	}
 
-	if path[0] == '(' && path[len(path)-1] == ')' {
-		return regRouterStrategy
+	if n.children == nil {
+		n.children = make(map[string]*node)
 	}
-
-	return nil
+	child, ok := n.children[path]
+	if !ok {
+		child = &node{path: path, typ: nodeTypeStatic}
+		n.children[path] = child
+	}
+	return child
 }
 
-func paramRouterStrategy(path string, n *node) *node {
-	if n.paramChild == nil {
-		n.paramChild = &node{
-			typ:       nodeTypeParam,
-			path:      path,
-			paramName: path[1:],
+func (n *node) childOrCreateParam(path string, paramName string) *node {
+	if n.regChild != nil {
+		panic(fmt.Sprintf("web: 非法路由，已有正则路由。不允许同时注册正则路由和参数路由 [%s]", path))
+	}
+	if n.starChild != nil {
+		panic(fmt.Sprintf("web: 非法路由，已有通配符路由。不允许同时注册通配符路由和参数路由 [%s]", path))
+	}
+	if n.paramChild != nil {
+		if n.paramChild.path != path {
+			panic(fmt.Sprintf("web: 路由冲突，参数路由冲突，已有 %s，新注册 %s", n.paramChild.path, path))
 		}
+	} else {
+		n.paramChild = &node{path: path, paramName: paramName, typ: nodeTypeParam}
 	}
 	return n.paramChild
 }
 
-func regRouterStrategy(path string, n *node) *node {
-	if n.regChild == nil {
-		regExpr, err := regexp.Compile(path[1 : len(path)-1])
+func (n *node) childOrCreateReg(path string, expr string, paramName string) *node {
+	if n.starChild != nil {
+		panic(fmt.Sprintf("web: 非法路由，已有通配符路由。不允许同时注册通配符路由和正则路由 [%s]", path))
+	}
+	if n.paramChild != nil {
+		panic(fmt.Sprintf("web: 非法路由，已有路径参数路由。不允许同时注册正则路由和参数路由 [%s]", path))
+	}
+	if n.regChild != nil {
+		if n.regChild.regExpr.String() != expr || n.paramName != paramName {
+			panic(fmt.Sprintf("web: 路由冲突，正则路由冲突，已有 %s，新注册 %s", n.regChild.path, path))
+		}
+	} else {
+		regExpr, err := regexp.Compile(expr)
 		if err != nil {
-			panic(err)
+			panic(fmt.Errorf("web: 正则表达式错误 %w", err))
 		}
-		n.regChild = &node{
-			typ:       nodeTypeReg,
-			path:      path,
-			regExpr:   regExpr,
-			paramName: path[1:],
-		}
+		n.regChild = &node{path: path, paramName: paramName, regExpr: regExpr, typ: nodeTypeReg}
 	}
 	return n.regChild
 }
 
-func wildcardRouterStrategy(path string, n *node) *node {
-	if n.starChild == nil {
-		n.starChild = &node{
-			typ:  nodeTypeAny,
-			path: path,
+// parseParam 用于解析判断是不是正则表达式
+// 第一个返回值是参数名字
+// 第二个返回值是正则表达式
+// 第三个返回值为 true 则说明是正则路由
+func (n *node) parseParam(path string) (string, string, bool) {
+	// 去除 :
+	path = path[1:]
+	segs := strings.SplitN(path, "(", 2)
+	if len(segs) == 2 {
+		expr := segs[1]
+		if strings.HasSuffix(expr, ")") {
+			return segs[0], expr[:len(expr)-1], true
 		}
 	}
-	return n.starChild
-}
-
-func staticRouterStrategy(path string, n *node) *node {
-	n.children = make(map[string]*node)
-	n.children[path] = NewStaticNode()
-	return n.children[path]
+	return path, "", false
 }
 
 type matchInfo struct {
 	n          *node
 	pathParams map[string]string
-}
-
-func newMatchInfo(n *node, pathParams map[string]string) *matchInfo {
-	return &matchInfo{
-		n,
-		pathParams,
-	}
 }
 
 func (m *matchInfo) addValue(key string, value string) {
@@ -253,44 +273,4 @@ func (m *matchInfo) addValue(key string, value string) {
 		m.pathParams = map[string]string{key: value}
 	}
 	m.pathParams[key] = value
-}
-
-// 检测path是否合法
-func checkPath(path string, rules ...ruleFunc) error {
-	for _, r := range rules {
-		if err := r(path); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type ruleFunc func(path string) error
-
-func checkPathEmpty(path string) error {
-	if path == "" {
-		return fmt.Errorf("web: 路由是空字符串")
-	}
-	return nil
-}
-
-func startWithSlash(path string) error {
-	if path[0] != '/' {
-		return fmt.Errorf("web: 路由必须以 / 开头")
-	}
-	return nil
-}
-
-func endWithSlash(path string) error {
-	if path[len(path)-1] == '/' && len(path) > 1 {
-		return fmt.Errorf("web: 路由不能以 / 结尾")
-	}
-	return nil
-}
-
-func noDuplicateSlash(path string) error {
-	if strings.Contains(path, "//") {
-		return fmt.Errorf("web: 非法路由。不允许使用 //a/b, /a//b 之类的路由, [%s]", path)
-	}
-	return nil
 }
