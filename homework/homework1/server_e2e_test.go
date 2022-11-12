@@ -14,6 +14,12 @@ func TestServer(t *testing.T) {
 	s.Get("/user", func(ctx *Context) {
 		ctx.Resp.Write([]byte("hello, user"))
 	})
+	s.Get("/user/home", func(ctx *Context) {
+		ctx.Resp.Write([]byte("hello, user/home"))
+	})
+	s.Get("/user/:id", func(ctx *Context) {
+		ctx.Resp.Write([]byte("hello, user/:id"))
+	})
 
 	s.Start(":8081")
 }
