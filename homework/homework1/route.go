@@ -83,17 +83,37 @@ func (r *router) findRoute(method string, path string) (*matchInfo, bool) {
 
 	log.Printf("current path is %s\n", path)
 
+	mi := &matchInfo{}
+
 	for _, p := range paths {
 		child, ok := root.childOf(p)
 		if !ok {
+			if root.typ == nodeTypeAny {
+				mi.n = root
+				return mi, true
+			}
 			return nil, false
+		}
+		if child.paramName != "" {
+			mi.addValue(child.paramName, p)
 		}
 		root = child
 	}
+	mi.n = root
+	return mi, true
+}
 
-	return &matchInfo{
-		root,
-		nil}, true
+type matchInfo struct {
+	n          *node
+	pathParams map[string]string
+}
+
+func (m *matchInfo) addValue(key string, value string) {
+	if m.pathParams == nil {
+		// 大多数情况，参数路径只会有一段
+		m.pathParams = map[string]string{key: value}
+	}
+	m.pathParams[key] = value
 }
 
 type nodeType int
@@ -145,21 +165,30 @@ func NewRootNode(handle HandleFunc) *node {
 	}
 }
 
-func NewStaticNode() *node {
-	return &node{
-		typ: nodeTypeStatic,
-	}
-}
-
 // child 返回子节点
 // 第一个返回值 *node 是命中的节点
 // 第二个返回值 bool 代表是否命中
 func (n *node) childOf(path string) (*node, bool) {
 	if n.children == nil {
-		return nil, false
+		return n.findChild(path)
 	}
 	child, ok := n.children[path]
+	if !ok {
+		return n.findChild(path)
+	}
 	return child, ok
+}
+
+func (n *node) findChild(path string) (*node, bool) {
+	if n.regChild != nil {
+		if n.regChild.regExpr.Match([]byte(path)) {
+			return n.regChild, true
+		}
+	}
+	if n.paramChild != nil {
+		return n.paramChild, true
+	}
+	return n.starChild, n.starChild != nil
 }
 
 // childOrCreate 查找子节点，
@@ -168,10 +197,10 @@ func (n *node) childOf(path string) (*node, bool) {
 // 最后会从 children 里面查找，
 // 如果没有找到，那么会创建一个新的节点，并且保存在 node 里面
 func (n *node) childOrCreate(path string) *node {
-	res, ok := n.childOf(path)
-	if ok {
-		return res
-	}
+	//res, ok := n.childOf(path)
+	//if ok {
+	//	return res
+	//}
 	var strategy = buildStrategy(path)
 
 	if strategy == nil {
@@ -200,7 +229,7 @@ func buildStrategy(path string) routerMatchStrategy {
 		return paramRouterStrategy
 	}
 
-	if path[0] == '(' && path[len(path)-1] == ')' {
+	if strings.Contains(path, "(") && strings.Contains(path, ")") {
 		return regRouterStrategy
 	}
 
@@ -267,7 +296,10 @@ func regRouterStrategy(path string, n *node) *node {
 			panic("非法路由")
 		}
 		parentName := name.FindString(path)
-		reg, err := regexp.Compile(path)
+		segs := strings.SplitN(path, "(", 2)[1]
+		log.Printf("segs: %v", segs)
+		segs = strings.Trim(segs, ")")
+		reg, err := regexp.Compile(segs)
 		if err != nil {
 			panic("非法路由")
 		}
@@ -293,26 +325,6 @@ func wildcardRouterStrategy(path string, n *node) *node {
 		n.starChild = &node{path: path, typ: nodeTypeAny}
 	}
 	return n.starChild
-}
-
-type matchInfo struct {
-	n          *node
-	pathParams map[string]string
-}
-
-func newMatchInfo(n *node, pathParams map[string]string) *matchInfo {
-	return &matchInfo{
-		n,
-		pathParams,
-	}
-}
-
-func (m *matchInfo) addValue(key string, value string) {
-	if m.pathParams == nil {
-		// 大多数情况，参数路径只会有一段
-		m.pathParams = map[string]string{key: value}
-	}
-	m.pathParams[key] = value
 }
 
 // 检测path是否合法
