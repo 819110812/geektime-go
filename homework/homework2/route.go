@@ -99,7 +99,33 @@ func (r *router) findRoute(method string, path string) (*matchInfo, bool) {
 }
 
 func (r *router) findMdls(root *node, segs []string) []Middleware {
-	panic("implement me")
+	if len(segs) == 0 {
+		return root.mdls
+	}
+	res := make([]Middleware, 0)
+	stack := []*node{root}
+	for _, s := range segs {
+		children := make([]*node, 0)
+		for _, current := range stack {
+			if current.mdls != nil {
+				res = append(res, current.mdls...)
+			}
+			// 遍历子树
+			n := current.childrenOf(s)
+			children = append(children, n...)
+		}
+		stack = children
+		fmt.Println(s)
+	}
+
+	// 获取剩余栈中middleware
+	for _, n := range stack {
+		if n.mdls != nil {
+			res = append(res, n.mdls...)
+		}
+	}
+
+	return res
 }
 
 // node 代表路由树的节点
