@@ -1,11 +1,11 @@
 package opentelemetry
 
 import (
-	"gitee.com/geektime-geekbang/geektime-go/web/homework2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+	web "homework/homework2"
 )
 
 const defaultInstrumentationName = "gitee.com/geektime-geekbang/geektime-go/web/middle/opentelemetry"

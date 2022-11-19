@@ -25,4 +25,3 @@ func TestServer(t *testing.T) {
 
 	s.Start(":8081")
 }
-

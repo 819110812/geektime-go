@@ -1,6 +1,6 @@
 package errhdl
 
-import "gitee.com/geektime-geekbang/geektime-go/web/homework2"
+import web "homework/homework2"
 
 type MiddlewareBuilder struct {
 	resp map[int][]byte
