@@ -1,8 +1,8 @@
 package opentelemetry
 
 import (
-	"gitee.com/geektime-geekbang/geektime-go/web/homework2"
 	"go.opentelemetry.io/otel"
+	web "homework/homework2"
 	"testing"
 	"time"
 )

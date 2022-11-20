@@ -2,7 +2,7 @@ package errhdl
 
 import (
 	"bytes"
-	web "gitee.com/geektime-geekbang/geektime-go/web/homework2"
+	web "homework/homework2"
 	"html/template"
 	"testing"
 )
