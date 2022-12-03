@@ -16,10 +16,11 @@ type Server interface {
 
 	// addRoute 注册一个路由
 	// method 是 HTTP 方法
-	addRoute(method string, path string, handler HandleFunc, mdls...Middleware)
+	addRoute(method string, path string, handler HandleFunc, mdls ...Middleware)
 	// 我们并不采取这种设计方案
 	// addRoute(method string, path string, handlers... HandleFunc)
 }
+
 // 确保 HTTPServer 肯定实现了 Server 接口
 var _ Server = &HTTPServer{}
 
@@ -34,17 +35,18 @@ func NewHTTPServer() *HTTPServer {
 	}
 }
 
-func (s *HTTPServer) Use(mdls...Middleware) {
+func (s *HTTPServer) Use(mdls ...Middleware) *HTTPServer {
 	if s.mdls == nil {
 		s.mdls = mdls
-		return
+		return s
 	}
 	s.mdls = append(s.mdls, mdls...)
+	return s
 }
 
 // UseV1 会执行路由匹配，只有匹配上了的 mdls 才会生效
 // 这个只需要稍微改造一下路由树就可以实现
-func (s *HTTPServer) UseV1(method string, path string, mdls...Middleware) {
+func (s *HTTPServer) UseV1(method string, path string, mdls ...Middleware) {
 	s.addRoute(method, path, nil, mdls...)
 }
 
@@ -57,7 +59,7 @@ func (s *HTTPServer) ServeHTTP(writer http.ResponseWriter, request *http.Request
 	// 最后一个应该是 HTTPServer 执行路由匹配，执行用户代码
 	root := s.serve
 	// 从后往前组装
-	for i := len(s.mdls) - 1; i >= 0; i -- {
+	for i := len(s.mdls) - 1; i >= 0; i-- {
 		root = s.mdls[i](root)
 	}
 	// 第一个应该是回写响应的
@@ -78,17 +80,19 @@ func (s *HTTPServer) Start(addr string) error {
 	return http.ListenAndServe(addr, s)
 }
 
-func (s *HTTPServer) Post(path string, handler HandleFunc) {
+func (s *HTTPServer) Post(path string, handler HandleFunc) *HTTPServer {
 	s.addRoute(http.MethodPost, path, handler)
+	return s
 }
 
-func (s *HTTPServer) Get(path string, handler HandleFunc) {
+func (s *HTTPServer) Get(path string, handler HandleFunc) *HTTPServer {
 	s.addRoute(http.MethodGet, path, handler)
+	return s
 }
 
 func (s *HTTPServer) serve(ctx *Context) {
 	mi, ok := s.findRoute(ctx.Req.Method, ctx.Req.URL.Path)
-	if !ok || mi.n == nil || mi.n.handler == nil{
+	if !ok || mi.n == nil || mi.n.handler == nil {
 		ctx.RespStatusCode = 404
 		return
 	}
@@ -106,4 +110,3 @@ func (s *HTTPServer) flashResp(ctx *Context) {
 		log.Fatalln("回写响应失败", err)
 	}
 }
-

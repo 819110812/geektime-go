@@ -14,6 +14,16 @@ func TestServer(t *testing.T) {
 	})
 	s.Get("/user", func(ctx *Context) {
 		ctx.Resp.Write([]byte("hello, user"))
+	}).Use(func(next HandleFunc) HandleFunc {
+		return func(ctx *Context) {
+			next(ctx)
+			ctx.Resp.Write([]byte("this is first middleware"))
+		}
+	}).Use(func(next HandleFunc) HandleFunc {
+		return func(ctx *Context) {
+			next(ctx)
+			ctx.Resp.Write([]byte("this second middleware"))
+		}
 	})
 
 	s.Post("/form", func(ctx *Context) {

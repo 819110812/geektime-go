@@ -3,6 +3,7 @@ module homework
 go 1.19
 
 require (
+	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/prometheus/client_golang v1.14.0
 	github.com/stretchr/testify v1.8.1
 	go.opentelemetry.io/otel v1.11.1
