@@ -70,6 +70,7 @@ func (s *Selector[T]) buildExpression(e Expression) error {
 		if err := s.buildExpression(exp.left); err != nil {
 			return err
 		}
+
 		if lp {
 			s.sb.WriteByte(')')
 		}
