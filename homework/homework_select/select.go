@@ -23,6 +23,7 @@ type Selector[T any] struct {
 	orderBy []OrderBy
 	offset  int
 	limit   int
+	alias   []string
 }
 
 func (s *Selector[T]) Select(cols ...Selectable) *Selector[T] {
@@ -99,7 +100,12 @@ func (s *Selector[T]) buildColumns() error {
 			if val.args != nil {
 				s.args = append(s.args, val.args...)
 			}
+		case Aggregate:
+			if err := s.buildAggregate(val, true); err != nil {
+				return err
+			}
 		default:
+			fmt.Println("unsupported column type", val)
 			return errs.NewErrUnsupportedSelectable(c)
 		}
 	}
@@ -115,7 +121,9 @@ func (s *Selector[T]) buildExpression(e Expression) error {
 		//s.sb.WriteByte('`')
 		//s.sb.WriteString(exp.name)
 		//s.sb.WriteByte('`')
-		exp.alias = ""
+		if len(s.where) > 0 {
+			exp.alias = ""
+		}
 		err := s.buildColumn(exp)
 		if err != nil {
 			return err
@@ -172,23 +180,28 @@ func (s *Selector[T]) Where(ps ...Predicate) *Selector[T] {
 
 // GroupBy 设置 group by 子句
 func (s *Selector[T]) GroupBy(cols ...Column) *Selector[T] {
-	panic("implement me")
+	s.groupBy = cols
+	return s
 }
 
 func (s *Selector[T]) Having(ps ...Predicate) *Selector[T] {
-	panic("implement me")
+	s.having = ps
+	return s
 }
 
 func (s *Selector[T]) Offset(offset int) *Selector[T] {
-	panic("implement me")
+	s.offset = offset
+	return s
 }
 
 func (s *Selector[T]) Limit(limit int) *Selector[T] {
-	panic("implement me")
+	s.limit = limit
+	return s
 }
 
 func (s *Selector[T]) OrderBy(orderBys ...OrderBy) *Selector[T] {
-	panic("implement me")
+	s.orderBy = orderBys
+	return s
 }
 
 func (s *Selector[T]) buildColumn(c Column) error {
@@ -205,6 +218,30 @@ func (s *Selector[T]) buildColumn(c Column) error {
 		s.sb.WriteByte('`')
 	}
 	return nil
+}
+
+func (s *Selector[T]) buildAggregate(val Aggregate, useAlias bool) error {
+	s.sb.WriteString(val.fn)
+	s.sb.WriteString("(`")
+	fd, ok := s.model.FieldMap[val.arg]
+	if !ok {
+		return errs.NewErrUnknownField(val.arg)
+	}
+	s.sb.WriteString(fd.ColName)
+	s.sb.WriteString("`)")
+	if useAlias {
+		s.buildAs(val.alias)
+	}
+	return nil
+}
+
+func (s *Selector[T]) buildAs(alias string) {
+	if alias != "" {
+		s.sb.WriteString(" AS ")
+		s.sb.WriteByte('`')
+		s.sb.WriteString(alias)
+		s.sb.WriteByte('`')
+	}
 }
 
 func NewSelector[T any](db *DB) *Selector[T] {
