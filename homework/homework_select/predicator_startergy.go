@@ -62,6 +62,23 @@ func (p *Processor[T]) Where() error {
 }
 
 func (p *Processor[T]) OrderBy() error {
+	p.selector.sb.WriteString(" ORDER BY ")
+	for i, order := range p.selector.orderBy {
+		if i > 0 {
+			p.selector.sb.WriteByte(',')
+		}
+		err := p.selector.buildColumn(order.Column)
+		if err != nil {
+			return err
+		}
+		p.selector.sb.WriteByte(' ')
+		if order.Asc {
+			p.selector.sb.WriteString("ASC")
+		} else {
+			p.selector.sb.WriteString("DESC")
+		}
+	}
+
 	return nil
 }
 

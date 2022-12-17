@@ -255,13 +255,14 @@ type Selectable interface {
 }
 
 type OrderBy struct {
+	Column Column
+	Asc    bool
 }
 
 func Asc(col string) OrderBy {
-	panic("implement me")
+	return OrderBy{Column: Column{name: col}, Asc: true}
 }
 
 func Desc(col string) OrderBy {
-	panic("implement me")
-
+	return OrderBy{Column: Column{name: col}, Asc: false}
 }
