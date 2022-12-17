@@ -18,29 +18,31 @@ func NewPredicateProcess[T any](s *Selector[T]) *Processor[T] {
 
 func (p *Processor[T]) process() error {
 	if len(p.selector.where) > 0 {
-		err := p.Where()
-		if err != nil {
+		if err := p.Where(); err != nil {
 			return err
 		}
 	}
 
 	if len(p.selector.groupBy) > 0 {
-		err := p.GroupBy()
-		if err != nil {
+		if err := p.GroupBy(); err != nil {
 			return err
 		}
 	}
 
 	if len(p.selector.orderBy) > 0 {
-		err := p.OrderBy()
-		if err != nil {
+		if err := p.OrderBy(); err != nil {
 			return err
 		}
 	}
 
 	if len(p.selector.having) > 0 {
-		err := p.Having()
-		if err != nil {
+		if err := p.Having(); err != nil {
+			return err
+		}
+	}
+
+	if p.selector.limit > 0 || p.selector.offset > 0 {
+		if err := p.OffsetLimit(); err != nil {
 			return err
 		}
 	}
@@ -101,5 +103,19 @@ func (p *Processor[T]) GroupBy() error {
 }
 
 func (p *Processor[T]) Having() error {
+	return nil
+}
+
+func (p *Processor[T]) OffsetLimit() error {
+	if p.selector.limit > 0 {
+		p.selector.sb.WriteString(" LIMIT ?")
+		p.selector.args = append(p.selector.args, p.selector.limit)
+
+	}
+
+	if p.selector.offset > 0 {
+		p.selector.sb.WriteString(" OFFSET ?")
+		p.selector.args = append(p.selector.args, p.selector.offset)
+	}
 	return nil
 }
