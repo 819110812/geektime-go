@@ -165,8 +165,13 @@ func (s *Selector[T]) buildExpression(e Expression) error {
 		if exp.args != nil {
 			s.args = append(s.args, exp.args...)
 		}
+	case Aggregate:
+		if err := s.buildAggregate(exp, false); err != nil {
+			return err
+		}
 	default:
 		fmt.Println("unsupported expression", e)
+		fmt.Println("type", fmt.Sprintf("%T", e))
 		return fmt.Errorf("orm: 不支持的表达式 %v", exp)
 	}
 	return nil

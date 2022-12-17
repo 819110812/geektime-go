@@ -103,6 +103,14 @@ func (p *Processor[T]) GroupBy() error {
 }
 
 func (p *Processor[T]) Having() error {
+	p.selector.sb.WriteString(" HAVING ")
+	pre := p.selector.having[0]
+	for i := 1; i < len(p.selector.having); i++ {
+		pre = pre.And(p.selector.having[i])
+	}
+	if err := p.selector.buildExpression(pre); err != nil {
+		return err
+	}
 	return nil
 }
 
