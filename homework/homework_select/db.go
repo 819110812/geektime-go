@@ -9,8 +9,8 @@ import (
 type DBOption func(*DB)
 
 type DB struct {
-	r          model.Registry
-	db         *sql.DB
+	registry model.Registry
+	db       *sql.DB
 	valCreator valuer.Creator
 }
 
@@ -24,7 +24,7 @@ func Open(driver string, dsn string, opts ...DBOption) (*DB, error) {
 
 func OpenDB(db *sql.DB, opts ...DBOption) (*DB, error) {
 	res := &DB{
-		r:          model.NewRegistry(),
+		registry:   model.NewRegistry(),
 		db:         db,
 		valCreator: valuer.NewUnsafeValue,
 	}
@@ -36,7 +36,7 @@ func OpenDB(db *sql.DB, opts ...DBOption) (*DB, error) {
 
 func DBWithRegistry(r model.Registry) DBOption {
 	return func(db *DB) {
-		db.r = r
+		db.registry = r
 	}
 }
 
