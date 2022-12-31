@@ -208,7 +208,7 @@ func TestSelector_Subquery(t *testing.T) {
 				return NewSelector[Order](db).Where(C("Id").GT(Some(sub)), C("Id").LT(Any(sub)))
 			}(),
 			wantQuery: &Query{
-				SQL: "SELECT * FROM `order` WHERE (`id` > SOME (SELECT `order_id` FROM `order_detail`)) AND (`id` < ANY (SELECT `order_id` FROM `order_detail`));",
+				SQL: "SELECT * FROM `order` WHERE (`id` > SOME (SELECT `order_id` FROM `order_detail`)) AND (`id` < ANY (SELECT `order_id` FROM `order_detail`;SELECT `order_id` FROM `order_detail`));",
 			},
 		},
 	}

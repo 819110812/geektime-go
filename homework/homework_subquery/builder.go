@@ -52,6 +52,8 @@ func (b *builder) colName(table TableReference, fd string) (string, error) {
 			return "", errs.NewErrUnknownField(fd)
 		}
 		return fdMeta.ColName, nil
+	case Subquery:
+		return fd, nil
 	default:
 		return "", errs.NewErrUnsupportedExpressionType(tab)
 	}
@@ -107,6 +109,13 @@ func (b *builder) buildExpression(e Expression) error {
 		return b.buildBinaryExpr(binaryExpr(exp))
 	case binaryExpr:
 		return b.buildBinaryExpr(exp)
+	case Subquery:
+		exp.alias = ""
+		return b.buildSubquery(exp)
+	case SubqueryExpr:
+		b.sb.WriteString(exp.pred)
+		b.sb.WriteByte(' ')
+		return b.buildSubqueryExpr(exp)
 	default:
 		return errs.NewErrUnsupportedExpressionType(exp)
 	}
@@ -176,4 +185,32 @@ func (b *builder) buildAs(alias string) {
 		b.sb.WriteString(" AS ")
 		b.quote(alias)
 	}
+}
+
+func (b *builder) buildSubquery(s Subquery) error {
+	query, err := s.builder.Build()
+	if err != nil {
+		return err
+	}
+	b.sb.WriteString("(")
+	b.sb.WriteString(query.SQL[:len(query.SQL)-1])
+	b.sb.WriteString(")")
+	if len(query.Args) > 0 {
+		b.addArgs(query.Args...)
+	}
+	if s.alias != "" {
+		b.sb.WriteString(" AS ")
+		b.quote(s.alias)
+	}
+
+	return nil
+}
+
+func (b *builder) buildSubqueryExpr(exp SubqueryExpr) error {
+	exp.s.alias = ""
+	err := b.buildSubquery(exp.s)
+	if err != nil {
+		return err
+	}
+	return nil
 }

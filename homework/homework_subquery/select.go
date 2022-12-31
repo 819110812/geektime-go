@@ -105,6 +105,8 @@ func (s *Selector[T]) buildTable(table TableReference) error {
 		}
 	case Join:
 		return s.buildJoin(tab)
+	case Subquery:
+		return s.builder.buildSubquery(tab)
 	default:
 		return errs.NewErrUnsupportedExpressionType(tab)
 	}
@@ -212,7 +214,16 @@ func (s *Selector[T]) Limit(limit int) *Selector[T] {
 }
 
 func (s *Selector[T]) AsSubquery(alias string) Subquery {
-	panic("implement me")
+	tbl := s.table
+	if tbl == nil {
+		tbl = TableOf(new(T))
+	}
+	return Subquery{
+		builder: s,
+		alias:   alias,
+		table:   tbl,
+		columns: s.columns,
+	}
 }
 
 func (s *Selector[T]) Get(ctx context.Context) (*T, error) {
