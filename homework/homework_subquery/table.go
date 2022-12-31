@@ -158,7 +158,7 @@ func (s Subquery) RightJoin(target TableReference) *JoinBuilder {
 
 func (s Subquery) C(name string) Column {
 	return Column{
-		table: s.table,
+		table: s,
 		name:  name,
 	}
 }
